@@ -11,3 +11,4 @@ texts.json
 # テスト・開発用の生成物
 tests/out/
 node_modules/
+sakusei-app.zip
