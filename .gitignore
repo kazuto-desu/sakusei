@@ -1,0 +1,14 @@
+# 個人情報・法人情報を含む可能性があるファイルは絶対にコミットしない
+*.xlsx
+*.xlsm
+*.xls
+*.xltx
+*.csv
+*.pdf
+*.sksbak
+!tests/fixtures/.keep
+
+# テスト用の生成物
+tests/out/
+tests/fixtures/*.xlsx
+node_modules/
