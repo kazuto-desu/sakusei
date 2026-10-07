@@ -6,9 +6,8 @@
 *.csv
 *.pdf
 *.sksbak
-!tests/fixtures/.keep
+texts.json
 
-# テスト用の生成物
+# テスト・開発用の生成物
 tests/out/
-tests/fixtures/*.xlsx
 node_modules/

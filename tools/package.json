@@ -1,0 +1,8 @@
+{
+  "name": "sakusei-tools",
+  "private": true,
+  "description": "様式の固定文言を社内Excelから抜き出すための開発用ツール（アプリの実行には不要）",
+  "devDependencies": {
+    "rabbit-node": "^1.0.4"
+  }
+}

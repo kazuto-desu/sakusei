@@ -64,7 +64,7 @@
     r.deductionTotal = ded;
     r.takeHome = r.monthlyC - ded;
     if (base && r.takeHome < 0) r.warnings.push('手取り額がマイナスになっています');
-    var jp = num((c.schedule || {}).jpSalary);
+    var jp = num(((c.docs || {}).reward || {}).jpMonthly);
     if (jp && r.monthlyA && r.monthlyA < jp) r.warnings.push('月給（固定支給込み）が、同等業務の日本人の報酬（' + jp.toLocaleString() + '円）を下回っています');
     return r;
   }

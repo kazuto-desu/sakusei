@@ -170,4 +170,109 @@ tr.overridden td { background: var(--override); }
   .link-row > div { grid-column: 1; }
   .main { padding: 16px; }
 }
-@media print { .topbar, .tabs, .btn { display: none; } }
+
+
+/* ---- 書類ごとの入力 ---- */
+.docs-layout { display: grid; grid-template-columns: 240px 1fr; gap: 16px; align-items: start; }
+.side-nav { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 72px; }
+.side-nav a { padding: 8px 12px; border-radius: 6px; text-decoration: none; color: var(--text); display: flex; justify-content: space-between; gap: 8px; }
+.side-nav a.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.checks { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.field .label { font-size: .86rem; font-weight: 600; }
+.list-title { margin: 18px 0 6px; font-size: .95rem; }
+.table-scroll { overflow-x: auto; }
+.plan-edit td { vertical-align: top; }
+.plan-edit td:first-child { min-width: 260px; max-width: 380px; }
+.plan-edit select { width: auto; }
+.doc-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; margin: 8px 0 16px; }
+.doc-item { display: flex; gap: 8px; align-items: center; padding: 6px 0; cursor: pointer; }
+.doc-no { color: var(--muted); font-size: .82rem; min-width: 128px; }
+@media (max-width: 900px) { .docs-layout, .doc-list { grid-template-columns: 1fr; } .side-nav { position: static; } }
+
+/* ---- 書類（画面表示・印刷） ---- */
+.print-bar { position: sticky; top: 0; z-index: 5; display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.docs { padding: 24px 0 64px; display: flex; flex-direction: column; align-items: center; gap: 24px; background: #e9ecf1; min-height: 100vh; }
+.doc {
+  --ink: #111; width: 210mm; max-width: 100%; padding: 16mm 15mm; background: #fff; color: var(--ink); box-shadow: 0 2px 10px rgba(0,0,0,.15);
+  font-family: "Yu Mincho", "YuMincho", "Hiragino Mincho ProN", "MS Mincho", "Noto Serif JP", serif; font-size: 10pt; line-height: 1.55;
+}
+.doc [lang=my], .doc .my { font-family: "Myanmar Text", "Noto Sans Myanmar", "Padauk", "Pyidaungsu", sans-serif; color: #333; font-size: 8.6pt; line-height: 1.7; }
+.doc .my.inline { font-size: 8.4pt; }
+.doc h1.doc-title { text-align: center; font-size: 15pt; letter-spacing: .1em; margin: 6px 0 2px; }
+.doc .doc-title-my { text-align: center; margin-bottom: 10px; }
+.doc .doc-head { margin-bottom: 12px; }
+.doc .form-no, .doc .form-no-row { font-size: 9pt; }
+.doc .form-no-row { display: flex; justify-content: space-between; }
+.doc .muted-r { color: #555; }
+.doc h2 { font-size: 11pt; margin: 14px 0 6px; }
+.doc h2.sec { margin-top: 16px; border-bottom: 1px solid #333; padding-bottom: 2px; }
+.doc h3 { font-size: 10.5pt; margin: 10px 0 4px; }
+.doc h3.article { margin: 10px 0 2px; }
+.doc h4 { font-size: 10pt; margin: 8px 0 4px; }
+.doc p { margin: 6px 0; }
+.doc .para { margin: 8px 0; text-indent: 1em; }
+.doc .small { font-size: 8.5pt; }
+.doc .center { text-align: center; }
+.doc .right { text-align: right; }
+.doc .num { text-align: right; white-space: nowrap; }
+.doc .strong { font-weight: 700; }
+.doc .muted { color: #666; }
+.doc .note { white-space: pre-wrap; font-size: 8.3pt; color: #222; margin: 4px 0 10px; padding: 6px 8px; border: 1px solid #bbb; }
+.doc .val { border-bottom: 1px solid #555; padding: 0 4px; min-width: 3em; display: inline-block; }
+.doc .val.wide { min-width: 14em; }
+.doc .val.block { display: block; border: none; min-height: 1.6em; white-space: pre-wrap; padding: 0; }
+.doc .val.blank.block { min-height: 3em; }
+.doc .form-table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
+.doc .form-table th, .doc .form-table td { border: 1px solid #333; padding: 4px 6px; vertical-align: top; text-align: left; font-weight: normal; }
+.doc .form-table th { background: #f3f3f3; }
+.doc .form-table.th-wide th { width: 38%; }
+.doc .form-table.th-mid th { width: 30%; }
+.doc .form-table.plain th { width: 22%; }
+.doc .form-table.issuer { width: auto; margin-left: auto; }
+.doc .form-table.issuer th { width: 38%; }
+.doc .form-table.inner { margin: 0; }
+.doc .form-table.cols th { text-align: center; }
+.doc .item { margin: 4px 0 6px 1em; }
+.doc .item-body { margin-left: 1em; }
+.doc .indent { margin-left: 2em; }
+.doc .opt { margin: 1px 0; }
+.doc .opts-row { display: flex; gap: 2em; flex-wrap: wrap; margin: 4px 0 4px 1em; }
+.doc .rules { margin: 4px 0 8px 2em; font-size: 9pt; }
+.doc .shift { margin: 2px 0 2px 1em; }
+.doc .date-right { text-align: right; margin: 10px 0; }
+.doc .addressee { margin: 8px 0; font-size: 11pt; }
+.doc .sign-two { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px; }
+.doc .sign-space { display: inline-block; min-width: 16em; border-bottom: 1px solid #333; height: 2em; vertical-align: bottom; }
+.doc .sign-block { margin-top: 18px; }
+.doc .sign-row { margin: 8px 0; display: flex; gap: 12px; align-items: flex-end; }
+.doc .sign-row.right { justify-content: flex-end; }
+.doc .sign-label { min-width: 15em; }
+.doc .receiver { margin-top: 20px; display: flex; gap: 12px; align-items: flex-end; justify-content: flex-end; }
+.doc .party { margin: 8px 0 0; }
+.doc .party-block div { margin: 2px 0; }
+.doc .clause { display: flex; gap: 6px; margin: 2px 0; }
+.doc .clause .cn { min-width: 1.6em; }
+.doc .circled { border: 1.2px solid #111; border-radius: 50%; padding: 0 3px; }
+.doc .kana { font-size: 8pt; color: #333; }
+.doc .plan-table { font-size: 8.4pt; }
+.doc .plan-table th { font-size: 8pt; text-align: center; }
+.doc .plan-table td.content { width: 30%; }
+.doc .plan-table td.plan { width: 13%; white-space: nowrap; }
+.doc .plan-table td.entrust { width: 6%; }
+.doc .plan-table td.method { width: 22%; }
+.doc .house { border: 1px solid #333; padding: 6px; margin: 4px 0 8px; font-size: 9pt; }
+.doc .confirm { margin-top: 16px; border-top: 1px dashed #666; padding-top: 10px; }
+.doc .allow-row { margin: 2px 0; }
+.doc .bi .jp + .my { margin-top: 1px; }
+
+@page { size: A4; margin: 12mm 12mm; }
+@media print {
+  html, body { background: #fff !important; }
+  .print-bar, .toast { display: none !important; }
+  .docs { padding: 0; background: #fff; gap: 0; display: block; }
+  .doc { width: auto; padding: 0; box-shadow: none; break-after: page; }
+  .doc:last-child { break-after: auto; }
+  .doc .break-before { break-before: page; }
+  .doc tr, .doc .item, .doc .sign-block, .doc .house { break-inside: avoid; }
+  .doc .form-table th { background: #f3f3f3 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
