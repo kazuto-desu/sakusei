@@ -276,3 +276,12 @@ tr.overridden td { background: var(--override); }
   .doc tr, .doc .item, .doc .sign-block, .doc .house { break-inside: avoid; }
   .doc .form-table th { background: #f3f3f3 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+.date-input { display: flex; flex-direction: column; gap: 2px; }
+.date-hint { font-size: .76rem; color: var(--muted); min-height: 1em; }
+.worker-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.worker-row select { max-width: 360px; }
+.worker-no { min-width: 1.6em; color: var(--muted); text-align: right; }
+.combine-box { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.combine-box .check-row { margin: 4px 0; flex-wrap: wrap; }
+.per-worker { border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
+.per-worker-name { font-weight: 700; margin-bottom: 4px; }

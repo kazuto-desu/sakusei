@@ -29,7 +29,7 @@
       h('p', {}, '　登録支援機関との１号特定技能外国人支援計画の全部の委託契約の概要は下記のとおりです。'),
       h('p', { class: 'center' }, '記'),
       D.table([
-        row('1', '申請人（支援対象者）', v(w.name, true)),
+        row('1', '申請人（支援対象者）', v(ctx.combined ? '別紙のとおり' : w.name, true)),
         row('2', '契約の相手方（登録支援機関）', [v(sup.name, true), '　（', v(sup.regNo), '）']),
         row('3', '契約年月日', D.jpDate(s.supportContractDate)),
         row('4', '委託する支援業務（１号特定技能外国人支援計画の全部であること）', '該当'),
@@ -38,6 +38,14 @@
       ], 'th-mid'),
       D.note('（注意）\n１　項番１に関し，複数の申請人（同時申請に限る。）について，全ての項目の内容が同一の場合には「別紙のとおり」として別紙を添付して差し支えない。\n２　項番２に関し，登録支援機関登録簿に登録された氏名又は名称を記載すること。'),
       D.signBlock(ctx));
+  }
+  function rosterCols() {
+    return [['氏名', function (x) { return x.name || ''; }], ['国籍・地域', function (x) { return x.nationality || ''; }],
+      ['生年月日', function (x) { return D.jpDate(x.birthDate); }]];
+  }
+  function render125All(ctx) {
+    var main = render125(ctx);
+    return ctx.combined ? [main, D.roster(ctx, '登録支援機関との支援委託契約に関する説明書　申請人（支援対象者）', rosterCols())] : main;
   }
 
   function partyBlock(label, org, rep) {
@@ -56,7 +64,7 @@
     var page1 = h('section', { class: 'doc' },
       D.docHead(ctx, '参考様式第５－１０号', null, '支援委託契約書'),
       h('p', {}, '　特定技能所属機関　' + (co.name || '　　　　') + '（以下「甲」という。）は，登録支援機関　' + (sup.name || '　　　　') +
-        '（以下「乙」という。）に，甲が雇用する１号特定技能外国人　' + (w.name || '　　　　') + '（以下「丙」という。）に対する１号特定技能外国人支援計画について，以下のとおり支援業務委託契約を締結する。'),
+        '（以下「乙」という。）に，甲が雇用する１号特定技能外国人　' + (ctx.combined ? '別紙のとおり' : (w.name || '　　　　')) + '（以下「丙」という。）に対する１号特定技能外国人支援計画について，以下のとおり支援業務委託契約を締結する。'),
       art('第１条（委託する支援業務）'), p(null, t('e510.a1')),
       [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (i) { return p(String(i), t('e510.a1.' + i)); }),
       p('11', '　この他，甲が属する' + (co.field || '特定産業分野') + 'を所管する関係行政機関の長が基準を定める告示の規定に基づいて定められた支援を実施すること。'),
@@ -101,7 +109,7 @@
     var page3 = memo.length ? h('section', { class: 'doc' },
       h('h1', { class: 'doc-title' }, '覚　書'),
       h('p', {}, D.jpDate(s.supportContractDate) + '付「支援委託契約書」以外の事項について、以下の通り合意する。'),
-      h('p', {}, '対象者　：　' + (w.name || '')),
+      h('p', {}, '対象者　：　' + (ctx.combined ? '別紙のとおり' : (w.name || ''))),
       h('table', { class: 'form-table cols' },
         h('thead', {}, h('tr', {}, h('th', {}, '項目'), h('th', {}, '単位'), h('th', {}, '金額'), h('th', {}, '税'))),
         h('tbody', {}, memo.map(function (m) {
@@ -112,9 +120,9 @@
       h('div', { class: 'sign-two' },
         partyBlock('甲', kou, [co.repTitle, co.repName].filter(Boolean).join('　')),
         partyBlock('乙', otsu, [sup.repTitle, sup.repName].filter(Boolean).join('　')))) : null;
-    return [page1, page2, page3];
+    return [page1, page2, page3, ctx.combined ? D.roster(ctx, '支援委託契約書　１号特定技能外国人（丙）', rosterCols()) : null];
   }
 
-  SKS.DOCS.push({ id: '1-25', no: '参考様式第1-25号', title: '登録支援機関との支援委託契約に関する説明書', group: '支援', needsSupport: true, render: render125 });
-  SKS.DOCS.push({ id: '5-10', no: '参考様式第5-10号', title: '支援委託契約書（別紙・覚書）', group: '支援', needsSupport: true, render: render510 });
+  SKS.DOCS.push({ id: '1-25', no: '参考様式第1-25号', title: '登録支援機関との支援委託契約に関する説明書', group: '支援', needsSupport: true, combinable: true, render: render125All });
+  SKS.DOCS.push({ id: '5-10', no: '参考様式第5-10号', title: '支援委託契約書（別紙・覚書）', group: '支援', needsSupport: true, combinable: true, render: render510 });
 })();

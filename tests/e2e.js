@@ -27,7 +27,7 @@ function assert(cond, msg) { if (!cond) { console.error('NG: ' + msg); process.e
     const esc = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const el = page.getByLabel(new RegExp('^' + esc + '(必須)?$')).first();
     const tag = await el.evaluate(e => e.tagName);
-    if (tag === 'SELECT') await el.selectOption(value); else await el.fill(value);
+    if (tag === 'SELECT') await el.selectOption(value); else { await el.fill(value); await el.press('Tab'); }
   }
   async function fillAll(obj) { for (const [k, v] of Object.entries(obj)) await fill(k, v); }
 
@@ -40,6 +40,8 @@ function assert(cond, msg) { if (!cond) { console.error('NG: ' + msg); process.e
   await page.goto(base + '#/workers'); await page.click('text=＋ 新規登録');
   await fillAll({ '氏名（旅券どおりのローマ字）': 'TEST TARO', '性別': '男', '生年月日': '2000-05-10', '国籍・地域': 'ミャンマー',
     '国籍（外国語表記）': 'Myanmar', '旅券番号': 'TZ0000001', '旅券の有効期限': '2030-01-31' });
+  await page.goto(base + '#/workers'); await page.click('text=＋ 新規登録');
+  await fillAll({ '氏名（旅券どおりのローマ字）': 'SAMPLE HANAKO', '性別': '女', '生年月日': '2001/3/3', '国籍・地域': 'ミャンマー' });
   // 受入機関
   await page.goto(base + '#/companies'); await page.click('text=＋ 新規登録');
   await fillAll({ '名称': 'テスト株式会社', '名称（外国語）': 'TEST CO., LTD.', '名称（ふりがな）': 'てすとかぶしきがいしゃ', '法人番号（13桁）': '1234567890123',
@@ -64,9 +66,16 @@ function assert(cond, msg) { if (!cond) { console.error('NG: ' + msg); process.e
   await sels.nth(2).selectOption({ label: 'テスト支援協同組合' });
   await page.click('.modal >> text=作成する');
   await page.waitForSelector('.tabs');
+  await page.getByLabel('申請人を追加').selectOption({ label: 'SAMPLE HANAKO' });
+  assert((await page.textContent('.combine-box')).includes('同時申請（2名）'), '2人目を追加すると連名の選択肢が表示される');
   await page.click('text=2. 日程・翻訳');
-  await fillAll({ '入国予定日': '2026-12-01', '雇用契約締結日': '2026-09-01', '雇用開始日（雇用契約の始期）': '2026-12-01', '申請日': '2026-10-10',
-    '書類作成日': '2026-10-01', '支援委託契約の締結日': '2026-09-01', '支援業務を開始する予定日': '2026-12-01' });
+  await fillAll({ '入国予定日': 'R8.12.1', '雇用契約締結日': '2026/9/1', '雇用開始日（雇用契約の始期）': '20261201', '申請日': '2026年10月10日',
+    '書類作成日': '２０２６／１０／１', '支援委託契約の締結日': '2026-09-01', '支援業務を開始する予定日': '2026/12/1' });
+  assert(await page.getByLabel(/^入国予定日/).inputValue() === '2026/12/01', '和暦（R8.12.1）の入力が 2026/12/01 に整えられる');
+  assert(await page.getByLabel(/^書類作成日/).inputValue() === '2026/10/01', '全角の日付が整えられる');
+  await page.getByLabel(/^申請日/).fill('2026/2/30'); await page.getByLabel(/^申請日/).press('Tab');
+  assert(await page.getByLabel(/^申請日/).evaluate(e => e.classList.contains('invalid')), '存在しない日付はエラーになる');
+  await fill('申請日', '2026/10/10');
   assert(await page.getByLabel(/^翻訳文を付ける言語/).inputValue() === 'ミャンマー語', '国籍がミャンマーなら翻訳言語が自動でミャンマー語になる');
   await page.click('text=3. 給与・労働条件');
   await fill('基本賃金（円）', '180000');
@@ -93,6 +102,10 @@ function assert(cond, msg) { if (!cond) { console.error('NG: ' + msg); process.e
   const text = await page.textContent('.docs');
   assert(text.includes('特定技能雇用契約書') && text.includes('雇用条件書') && text.includes('支援計画書') && text.includes('支援委託契約書'), '8種類の書類の見出しがある');
   assert(text.includes('TEST TARO') && text.includes('テスト株式会社') && text.includes('テスト支援協同組合'), 'マスタの情報が反映される');
+  assert(text.includes('SAMPLE HANAKO'), '2人目の個人ごとの書類が作成される');
+  assert((text.match(/特定技能雇用契約書/g) || []).length >= 2, '雇用契約書は1人1部作成される');
+  assert(text.includes('別紙の名簿のとおり') && text.includes('支援対象者（名簿）'), '支援計画書は連名（別紙の名簿のとおり＋名簿）になる');
+  assert(text.includes('甲が雇用する１号特定技能外国人　別紙のとおり'), '支援委託契約書の丙が「別紙のとおり」になる');
   assert(text.includes('2026年12月1日　～　2027年11月30日'), '雇用契約期間が1年間で自動計算される');
   assert(text.includes('185,000'), '月給（固定支給込み）185,000円が報酬説明書に入る');
   assert(text.includes('月額　20,000円（税別）'), '支援委託料（定期分）が委託契約書に入る');

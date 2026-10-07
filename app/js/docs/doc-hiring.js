@@ -17,8 +17,8 @@
       { key: 'domZip', label: '郵便番号' },
       { key: 'domAddr', label: '住所' },
       { key: 'domTel', label: '電話番号' },
-      { key: 'domSeekerAmount', label: '求職者（申請人）が支払った額（円）', type: 'number' },
-      { key: 'domSeekerPurpose', label: '求職者が支払った名目' },
+      { key: 'domSeekerAmount', label: '求職者（申請人）が支払った額（円）', type: 'number' , perWorker: true },
+      { key: 'domSeekerPurpose', label: '求職者が支払った名目' , perWorker: true },
       { key: 'domEmployerAmount', label: '求人者（所属機関）が支払った額（円）', type: 'number' },
       { key: 'domEmployerPurpose', label: '求人者が支払った名目' },
       { group: '2 取次機関（国外）' },
@@ -27,19 +27,19 @@
       { key: 'abrCountry', label: '所在国' },
       { key: 'abrAddr', label: '所在地' },
       { key: 'abrTel', label: '電話番号' },
-      { key: 'abrSeekerAmount', label: '求職者が支払った額（円）', type: 'number' },
-      { key: 'abrSeekerPurpose', label: '求職者が支払った名目' },
+      { key: 'abrSeekerAmount', label: '求職者が支払った額（円）', type: 'number' , perWorker: true },
+      { key: 'abrSeekerPurpose', label: '求職者が支払った名目' , perWorker: true },
       { key: 'abrEmployerAmount', label: '求人者が支払った額（円）', type: 'number' },
       { key: 'abrEmployerPurpose', label: '求人者が支払った名目' },
       { group: '3 事前ガイダンス' },
       { key: 'guidance', label: '支援計画に定めるとおりに実施していることの有無', type: 'select', options: ['有', '無'] },
       { group: '4 求職者（申請人）が自国等の機関に支払った費用' },
-      { key: 'payments', label: '支払った費用', type: 'list', max: 5, columns: [
+      { key: 'payments', label: '4 自国等の機関に支払った費用', type: 'list', max: 5, perWorker: true, columns: [
         { key: 'payee', label: '支払先機関の名称' }, { key: 'payee_my', label: '支払先（ミャンマー語）', my: true },
         { key: 'purpose', label: '名目' }, { key: 'purpose_my', label: '名目（ミャンマー語）', my: true },
         { key: 'date', label: '支払年月日', type: 'date' }, { key: 'foreign', label: '支払金額（現地通貨・米ドル）', placeholder: '500米ドル' },
         { key: 'yen', label: '日本円換算（円）' }] },
-      { key: 'foreignTotal', label: '合計（現地通貨・米ドル）', placeholder: '1,500米ドル' }
+      { key: 'foreignTotal', label: '合計（現地通貨・米ドル）', placeholder: '1,500米ドル' , perWorker: true }
     ]
   });
 

@@ -10,7 +10,7 @@
       { group: '1 申請人に対する報酬' },
       { key: 'duties', label: '②申請人の役職，職務内容，責任の程度', type: 'textarea', required: true,
         placeholder: '例）〇〇において△△業務を担当する（役職なし）。指導員の指示に従って……に従事する。' },
-      { key: 'expYears', label: '③経験年数（従事させる業務に係る経験・年）', type: 'number', placeholder: '0' },
+      { key: 'expYears', label: '③経験年数（従事させる業務に係る経験・年）', type: 'number', placeholder: '0', perWorker: true },
       { key: 'notes', label: '⑤その他（諸手当など特記事項）', type: 'textarea', hint: '空欄のときは手当の内訳を自動で記載します' },
       { group: '2・3 比較対象の日本人労働者' },
       { key: 'compareType', label: '比較対象', type: 'select', required: true, options: ['比較対象となる日本人労働者がいる', '比較対象となる日本人労働者がいない'] },

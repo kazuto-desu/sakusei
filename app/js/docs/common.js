@@ -120,17 +120,24 @@
   }
 
   // 書類の共通コンテキスト
-  function context(c, state) {
+  // workerId: 個人ごとの書類の対象者。combined: true のときは同時申請の全員をまとめた書類
+  function context(c, state, workerId, combined) {
     var byId = function (list, id) { for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i]; return null; };
     var s = c.schedule || {};
+    var workers = (c.workerIds || []).map(function (id) { return byId(state.workers, id); }).filter(Boolean);
+    var docs = {};
+    var per = ((c.perWorker || {})[workerId]) || {};
+    Object.keys(c.docs || {}).forEach(function (k) { docs[k] = Object.assign({}, c.docs[k], per[k] || {}); });
     var ctx = {
       case: c,
-      worker: byId(state.workers, c.workerId) || {},
+      worker: byId(state.workers, workerId) || workers[0] || {},
+      workers: workers,
+      combined: !!combined && workers.length > 1,
       company: byId(state.companies, c.companyId) || {},
       support: byId(state.supports, c.supportId),
       calc: Calc.compute(c),
       my: s.lang === 'ミャンマー語',
-      docs: c.docs || {}
+      docs: docs
     };
     ctx.employEnd = s.employEnd || (s.employStart ? addDays(addMonths(s.employStart, 12), -1) : '');
     ctx.supportFrom = s.supportFrom || s.supportContractDate || '';
@@ -138,7 +145,36 @@
     return ctx;
   }
 
+  /*
+   * 作成する書類の一覧（同時申請の場合、連名にする書類は1部、それ以外は1人1部）
+   */
+  function plan(c, state, ids) {
+    var jobs = [];
+    var ws = (c.workerIds || []).length ? c.workerIds : [null];
+    SKS.DOCS.filter(function (d) { return ids.indexOf(d.id) >= 0; }).forEach(function (d) {
+      if (d.combinable && ws.length > 1 && (c.combine || {})[d.id] !== false) {
+        jobs.push({ doc: d, ctx: context(c, state, ws[0], true) });
+      } else {
+        ws.forEach(function (wid) { jobs.push({ doc: d, ctx: context(c, state, wid, false) }); });
+      }
+    });
+    return jobs;
+  }
+
+  // 同時申請の名簿（別紙）
+  function roster(ctx, title, columns) {
+    return h('section', { class: 'doc' },
+      h('div', { class: 'form-no' }, '別紙'),
+      h('h1', { class: 'doc-title' }, title),
+      h('table', { class: 'form-table cols' },
+        h('thead', {}, h('tr', {}, h('th', {}, '番号'), columns.map(function (col) { return h('th', {}, col[0]); }))),
+        h('tbody', {}, ctx.workers.map(function (w, i) {
+          return h('tr', {}, h('td', { class: 'center' }, String(i + 1)), columns.map(function (col) { return h('td', {}, col[1](w)); }));
+        }))));
+  }
+
   SKS.Doc = {
+    plan: plan, roster: roster,
     t: t, empty: empty, num: num, yen: yen, jpDate: jpDate, jpMonth: jpMonth, myDate: myDate,
     addMonths: addMonths, addDays: addDays, box: box, fill: fill, hm: hm, timeParts: timeParts,
     bi: bi, myLine: myLine, v: v, multiline: multiline, docHead: docHead, note: note,

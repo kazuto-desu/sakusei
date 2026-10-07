@@ -204,11 +204,12 @@
     out.push(h('div', { class: 'date-right' }, '作成日：' + D.jpDate(s.docDate), D.myLine(ctx, t('p117.created.my').split(/[\t-]/)[0] + ' - ' + D.myDate(s.docDate))));
 
     out.push(h('h2', {}, 'Ⅰ　支援対象者', D.myLine(ctx, t('p117.s1.my'))));
+    var cb = ctx.combined;
     out.push(D.table([
-      orgRow(ctx, '１　氏名', t('p117.name.my'), [v(w.name, true), '　（ほか　', v(p.others || '0'), '　名）']),
-      orgRow(ctx, '２　性別', t('p117.gender.my'), [v(w.gender), D.myLine(ctx, w.gender === '男' ? 'ကျား' : w.gender === '女' ? 'မ' : '')]),
-      orgRow(ctx, '３　生年月日', t('p117.birth.my'), [D.jpDate(w.birthDate), D.myLine(ctx, D.myDate(w.birthDate))]),
-      orgRow(ctx, '４　国籍・地域', t('p117.nat.my'), [v(w.nationality), D.myLine(ctx, w.nationalityFor)])
+      orgRow(ctx, '１　氏名', t('p117.name.my'), [v(cb ? '別紙の名簿のとおり' : w.name, true), '　（ほか　', v(cb ? String(ctx.workers.length - 1) : (p.others || '0')), '　名）']),
+      orgRow(ctx, '２　性別', t('p117.gender.my'), cb ? '' : [v(w.gender), D.myLine(ctx, w.gender === '男' ? 'ကျား' : w.gender === '女' ? 'မ' : '')]),
+      orgRow(ctx, '３　生年月日', t('p117.birth.my'), cb ? '' : [D.jpDate(w.birthDate), D.myLine(ctx, D.myDate(w.birthDate))]),
+      orgRow(ctx, '４　国籍・地域', t('p117.nat.my'), cb ? '' : [v(w.nationality), D.myLine(ctx, w.nationalityFor)])
     ], 'th-mid'));
 
     out.push(h('h2', {}, 'Ⅱ　特定技能所属機関', D.myLine(ctx, t('p117.s2.my'))));
@@ -274,8 +275,12 @@
       D.myLine(ctx, t('p117.understood.pre.my') + ' ' + 'မြန်မာ' + t('p117.understood.my')),
       h('div', { class: 'sign-row' }, h('span', { class: 'sign-label' }, '署名日', D.myLine(ctx, t('p117.signDate.my'))), '　　　　年　　　月　　　日'),
       h('div', { class: 'sign-row' }, h('span', { class: 'sign-label' }, '１号特定技能外国人の署名', D.myLine(ctx, t('p117.workerSign.my'))), h('span', { class: 'sign-space' }, '　'))));
-    return h('section', { class: 'doc doc-wide' }, out);
+    var main = h('section', { class: 'doc doc-wide' }, out);
+    if (!cb) return main;
+    return [main, D.roster(ctx, '１号特定技能外国人支援計画書　Ⅰ　支援対象者（名簿）', [
+      ['氏名', function (x) { return x.name || ''; }], ['性別', function (x) { return x.gender || ''; }],
+      ['生年月日', function (x) { return D.jpDate(x.birthDate); }], ['国籍・地域', function (x) { return x.nationality || ''; }]])];
   }
 
-  SKS.DOCS.push({ id: '1-17', no: '参考様式第1-17号', title: '１号特定技能外国人支援計画書', group: '支援', input: 'plan', bilingual: true, landscape: false, render: render });
+  SKS.DOCS.push({ id: '1-17', no: '参考様式第1-17号', title: '１号特定技能外国人支援計画書', group: '支援', input: 'plan', bilingual: true, combinable: true, landscape: false, render: render });
 })();

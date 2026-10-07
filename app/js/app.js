@@ -136,7 +136,13 @@
     Object.keys(e.settings).forEach(function (k) { if (st.settings[k] === undefined) st.settings[k] = e.settings[k]; });
     // 旧版（Excel出力）のデータを整理
     delete st.templates; delete st.agent; delete st.settings.stripMetadata; delete st.settings.activeTemplateId;
-    st.cases.forEach(function (c) { delete c.sheetValues; delete c.templateId; });
+    st.cases.forEach(function (c) {
+      delete c.sheetValues; delete c.templateId;
+      // 1案件1名 → 複数名（同時申請）対応
+      if (!c.workerIds) { c.workerIds = c.workerId ? [c.workerId] : []; delete c.workerId; }
+      c.perWorker = c.perWorker || {};
+      c.combine = c.combine || {};
+    });
     st.version = 2;
   }
   function forgot() {
@@ -160,9 +166,14 @@
       input = h('input', { id: id, type: 'text', list: listId, placeholder: def.placeholder || '', autocomplete: 'off' });
       input.value = value || '';
       input = h('span', { class: 'combo' }, input, h('datalist', { id: listId }, def.options.map(function (o) { return h('option', { value: o }); })));
+    } else if (t === 'date' || t === 'time' || t === 'month') {
+      var di = UI.dateInput(t, value, function (v) { onChange(v); }, { id: id });
+      if (def.required) di.input.setAttribute('aria-required', 'true');
+      return h('div', { class: 'field' + (def.my ? ' is-my' : '') },
+        h('label', { for: id }, def.label, def.required ? h('span', { class: 'req', 'aria-hidden': 'true', text: '必須' }) : null),
+        di, def.hint ? h('span', { class: 'hint', text: def.hint }) : null);
     } else {
-      var type = { date: 'date', time: 'time', month: 'month' }[t] || 'text';
-      input = h('input', { id: id, type: type, placeholder: def.placeholder || '', inputmode: t === 'number' ? 'decimal' : null, autocomplete: 'off' });
+      input = h('input', { id: id, type: 'text', placeholder: def.placeholder || '', inputmode: t === 'number' ? 'decimal' : null, autocomplete: 'off' });
       input.value = value || '';
     }
     var el = input.tagName === 'SPAN' ? input.querySelector('input') : input;
@@ -221,10 +232,13 @@
     box.appendChild(body);
     function cellInput(c, r, i) {
       var inp;
+      if (c.type === 'date' || c.type === 'time') {
+        return UI.dateInput(c.type, r[c.key], function (v) { r[c.key] = v; onChange(); }, { 'aria-label': c.label + ' ' + (i + 1) });
+      }
       if (c.type === 'select') {
         inp = h('select', {}, h('option', { value: '', text: '（選択）' }), c.options.map(function (o) { return h('option', { value: o, text: o }); }));
       } else {
-        inp = h('input', { type: c.type === 'date' ? 'date' : c.type === 'time' ? 'time' : 'text', placeholder: c.placeholder || '' });
+        inp = h('input', { type: 'text', placeholder: c.placeholder || '' });
       }
       inp.value = r[c.key] || '';
       inp.setAttribute('aria-label', c.label + ' ' + (i + 1));
@@ -246,14 +260,20 @@
   }
 
   // ======================= 案件一覧 =======================
+  function workersOf(c) {
+    return (c.workerIds || []).map(function (id) { return byId(S.state.workers, id); }).filter(Boolean);
+  }
   function caseTitle(c) {
-    var w = byId(S.state.workers, c.workerId), co = byId(S.state.companies, c.companyId);
-    return (w ? (w.name || '（氏名未入力）') : '（外国人未選択）') + ' ／ ' + (co ? (co.name || '（名称未入力）') : '（受入機関未選択）');
+    var ws = workersOf(c), co = byId(S.state.companies, c.companyId);
+    var names = ws.length ? (ws[0].name || '（氏名未入力）') + (ws.length > 1 ? ' ほか' + (ws.length - 1) + '名' : '') : '（外国人未選択）';
+    return names + ' ／ ' + (co ? (co.name || '（名称未入力）') : '（受入機関未選択）');
   }
   function caseCtx(c) {
+    var ws = workersOf(c);
     return {
       case: c,
-      worker: byId(S.state.workers, c.workerId),
+      worker: ws[0] || null,
+      workers: ws,
       company: byId(S.state.companies, c.companyId),
       support: byId(S.state.supports, c.supportId)
     };
@@ -313,6 +333,7 @@
     var carry = h('input', { type: 'checkbox', checked: true });
     var body = h('div', { class: 'form-stack' },
       h('label', { text: '外国人（申請人）' }), w,
+      h('p', { class: 'muted small', text: '複数人を同時に申請する場合は、作成後の「1. 紐付け」で2人目以降を追加できます。' }),
       h('label', { text: '受入機関' }), co,
       h('label', { text: '登録支援機関' }), su,
       h('label', { class: 'check-row' }, carry, ' 同じ受入機関の直近の案件から、給与・労働条件・書類の入力内容を引き継ぐ'),
@@ -322,15 +343,17 @@
       { label: '作成する', primary: true, onClick: function () {
         var c = {
           id: UI.uid(), status: '作成中', createdAt: now(), updatedAt: now(),
-          workerId: null, companyId: null, supportId: null,
-          schedule: {}, labor: {}, salary: { payType: '月給', allowances: [], deductions: {}, otherDeductions: [] }, docs: {}
+          workerIds: [], companyId: null, supportId: null,
+          schedule: {}, labor: {}, salary: { payType: '月給', allowances: [], deductions: {}, otherDeductions: [] }, docs: {}, perWorker: {}, combine: {}
         };
         var goto = null;
         function resolve(sel, kind, field) {
           if (sel.value === '__new') { var o = newMaster(kind); c[field] = o.id; if (!goto) goto = '#/' + kind + '/' + o.id; }
           else c[field] = sel.value || null;
         }
-        resolve(w, 'worker', 'workerId'); resolve(co, 'company', 'companyId'); resolve(su, 'support', 'supportId');
+        resolve(w, 'worker', 'firstWorker'); resolve(co, 'company', 'companyId'); resolve(su, 'support', 'supportId');
+        if (c.firstWorker) c.workerIds.push(c.firstWorker);
+        delete c.firstWorker;
         applyCarryOver(c, carry.checked);
         ensureDocs(c);
         S.state.cases.push(c);
@@ -363,7 +386,7 @@
       ['holidays', 'startTime', 'endTime', 'breakMin'].forEach(function (k) { if (company[k]) c.labor[k] = company[k]; });
     }
     if (!c.schedule.lang) {
-      var w = byId(S.state.workers, c.workerId);
+      var w = workersOf(c)[0];
       c.schedule.lang = w && w.nationality === 'ミャンマー' ? 'ミャンマー語' : 'なし（日本語のみ）';
     }
   }
@@ -371,7 +394,8 @@
   function duplicateCase(c) {
     var copy = clone(c);
     copy.id = UI.uid(); copy.createdAt = now(); copy.updatedAt = now(); copy.status = '作成中';
-    copy.workerId = null;
+    copy.workerIds = [];
+    copy.perWorker = {};
     ['entryDate', 'contractDate', 'employStart', 'employEnd', 'applyDate', 'docDate', 'supportContractDate', 'supportFrom', 'supportTo', 'supportStart'].forEach(function (k) { delete copy.schedule[k]; });
     copy.docs = stripPersonal(copy.docs || {});
     copy.memo = '';
@@ -446,12 +470,67 @@
     var memo = h('textarea', { rows: 3, placeholder: '社内メモ（書類には出力されません）' });
     memo.value = c.memo || '';
     memo.addEventListener('input', function () { c.memo = memo.value; touch(); });
-    card.appendChild(row('worker', 'workerId', '外国人（申請人）'));
+    card.appendChild(workersRow(c, touch));
     card.appendChild(row('company', 'companyId', '受入機関'));
     card.appendChild(row('support', 'supportId', '登録支援機関', true));
     card.appendChild(h('div', { class: 'link-row' }, h('label', { text: '状況' }), status));
     card.appendChild(h('div', { class: 'link-row' }, h('label', { text: 'メモ' }), memo));
     return card;
+  }
+
+  // 申請人（複数人の同時申請に対応）
+  var COMBINABLE = [
+    ['1-17', '1-17 支援計画書', 'Ⅰ欄の氏名を「別紙の名簿のとおり」とし、名簿を添付（支援内容が同一の場合）'],
+    ['1-25', '1-25 支援委託契約に関する説明書', '申請人欄を「別紙のとおり」とし、別紙を添付（全項目が同一の場合）'],
+    ['5-10', '5-10 支援委託契約書', '丙（外国人）を「別紙のとおり」とし、別紙を添付']
+  ];
+  function workersRow(c, touch) {
+    c.workerIds = c.workerIds || [];
+    c.combine = c.combine || {};
+    var box = h('div', { class: 'link-row' }, h('label', { text: '外国人（申請人）' }));
+    var body = h('div');
+    box.appendChild(body);
+    function render() {
+      UI.clear(body);
+      c.workerIds.forEach(function (id, i) {
+        var sel = masterSelect('worker', id);
+        sel.setAttribute('aria-label', '申請人' + (i + 1));
+        sel.addEventListener('change', function () {
+          if (sel.value === '__new') { var o = newMaster('worker'); c.workerIds[i] = o.id; touch(); location.hash = '#/worker/' + o.id; return; }
+          if (!sel.value) return;
+          if (c.workerIds.indexOf(sel.value) >= 0 && c.workerIds.indexOf(sel.value) !== i) { UI.toast('同じ外国人がすでに追加されています', 'error'); sel.value = id; return; }
+          c.workerIds[i] = sel.value; touch(); render();
+        });
+        var w = byId(S.state.workers, c.workerIds[i]);
+        body.appendChild(h('div', { class: 'worker-row' }, h('span', { class: 'worker-no', text: String(i + 1) }), sel,
+          w ? h('a', { href: '#/worker/' + w.id, text: '編集' }) : null,
+          h('button', { class: 'btn small danger-text', type: 'button', text: '外す', on: { click: function () {
+            c.workerIds.splice(i, 1); touch(); render();
+          } } })));
+      });
+      var add = masterSelect('worker', '');
+      add.options[0].text = c.workerIds.length ? '＋ 同時に申請する外国人を追加' : '（選択してください）';
+      add.setAttribute('aria-label', '申請人を追加');
+      add.addEventListener('change', function () {
+        if (add.value === '__new') { var o = newMaster('worker'); c.workerIds.push(o.id); touch(); location.hash = '#/worker/' + o.id; return; }
+        if (!add.value) return;
+        if (c.workerIds.indexOf(add.value) >= 0) { UI.toast('同じ外国人がすでに追加されています', 'error'); add.value = ''; return; }
+        c.workerIds.push(add.value); touch(); render();
+      });
+      body.appendChild(h('div', { class: 'worker-row' }, h('span', { class: 'worker-no', text: '＋' }), add));
+      if (c.workerIds.length > 1) {
+        body.appendChild(h('div', { class: 'combine-box' },
+          h('div', { class: 'strong', text: '同時申請（' + c.workerIds.length + '名）：連名にする書類' }),
+          h('p', { class: 'muted small', text: 'チェックした書類は1部にまとめ、氏名欄を「別紙のとおり」として申請人の名簿（別紙）を付けます。チェックしない書類と、雇用契約書・雇用条件書など個人ごとの書類は、1人ずつ作成します。' }),
+          COMBINABLE.map(function (x) {
+            var cb = h('input', { type: 'checkbox', checked: c.combine[x[0]] !== false });
+            cb.addEventListener('change', function () { c.combine[x[0]] = cb.checked; touch(); });
+            return h('label', { class: 'check-row' }, cb, ' ' + x[1], h('span', { class: 'muted small', text: '　' + x[2] }));
+          })));
+      }
+    }
+    render();
+    return box;
   }
 
   function caseSalary(c, touch) {
@@ -542,7 +621,19 @@
     var card = h('div', { class: 'card' });
     card.appendChild(h('h2', { text: di.title }));
     if (!my && di.fields.some(function (d) { return d.my; })) card.appendChild(h('p', { class: 'muted small', text: '翻訳文（ミャンマー語）の欄は、「2. 日程・翻訳」で翻訳言語を選ぶと表示されます。' }));
-    card.appendChild(fieldGrid(di.fields, obj, touch, { my: my }));
+    card.appendChild(fieldGrid(di.fields.filter(function (d) { return !d.perWorker; }), obj, touch, { my: my }));
+    var pw = di.fields.filter(function (d) { return d.perWorker; });
+    if (pw.length) {
+      c.perWorker = c.perWorker || {};
+      var ws = workersOf(c);
+      card.appendChild(h('h3', { class: 'group', text: '申請人ごとに入力する項目' }));
+      if (!ws.length) card.appendChild(h('p', { class: 'muted', text: '「1. 紐付け」で外国人を選択してください。' }));
+      ws.forEach(function (w) {
+        var store = c.perWorker[w.id] = c.perWorker[w.id] || {};
+        var o = store[di.key] = store[di.key] || {};
+        card.appendChild(h('div', { class: 'per-worker' }, h('div', { class: 'per-worker-name', text: w.name || '（氏名未入力）' }), fieldGrid(pw, o, touch, { my: my })));
+      });
+    }
     if (di.planEditor) card.appendChild(planEditor(c, touch));
     return h('div', { class: 'docs-layout' }, nav, card);
   }
@@ -553,7 +644,7 @@
     var p = c.docs.plan;
     p.items = p.items || {};
     p.free = p.free || {};
-    var ctx = D.context(c, S.state);
+    var ctx = D.context(c, S.state, (c.workerIds || [])[0]);
     var wrap = h('div', { class: 'plan-editor' }, h('h3', { class: 'group', text: 'Ⅳ 支援内容（項目ごと）' }),
       h('p', { class: 'muted small', text: '担当者・住所は、空欄のとき登録支援機関（自社支援の場合は受入機関の支援担当者）の情報を使います。' }));
     function editorRow(sec, key, isFree) {
@@ -649,14 +740,13 @@
     if (!c) return h('section', {}, h('p', { text: '案件が見つかりません。' }));
     ensureDocs(c);
     var ids = (idsText || '').split(',');
-    var ctx = D.context(c, S.state);
     var pages = h('div', { class: 'docs' });
-    SKS.DOCS.filter(function (d) { return ids.indexOf(d.id) >= 0; }).forEach(function (d) {
+    D.plan(c, S.state, ids).forEach(function (job) {
       try {
-        [].concat(d.render(ctx)).forEach(function (el) { if (el) pages.appendChild(el); });
+        [].concat(job.doc.render(job.ctx)).forEach(function (el) { if (el) pages.appendChild(el); });
       } catch (e) {
         console.error(e);
-        pages.appendChild(h('section', { class: 'doc' }, h('p', { class: 'error-text', text: d.title + ' を作成できませんでした: ' + e.message })));
+        pages.appendChild(h('section', { class: 'doc' }, h('p', { class: 'error-text', text: job.doc.title + ' を作成できませんでした: ' + e.message })));
       }
     });
     var bar = h('div', { class: 'print-bar' },

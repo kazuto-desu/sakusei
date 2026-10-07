@@ -20,8 +20,9 @@
       });
     }
     var c = ctx.case;
-    if (!ctx.worker) issues.push({ level: 'error', area: '紐付け', msg: '外国人（申請人）が選択されていません', link: 'basic' });
-    else req(F.worker, ctx.worker, '外国人', '#/worker/' + ctx.worker.id);
+    var workers = ctx.workers || (ctx.worker ? [ctx.worker] : []);
+    if (!workers.length) issues.push({ level: 'error', area: '紐付け', msg: '外国人（申請人）が選択されていません', link: 'basic' });
+    workers.forEach(function (w) { req(F.worker, w, '外国人（' + (w.name || '氏名未入力') + '）', '#/worker/' + w.id); });
     if (!ctx.company) issues.push({ level: 'error', area: '紐付け', msg: '受入機関が選択されていません', link: 'basic' });
     else req(F.company, ctx.company, '受入機関', '#/company/' + ctx.company.id);
     if (ctx.support) req(F.support, ctx.support, '登録支援機関', '#/support/' + ctx.support.id);
@@ -32,15 +33,18 @@
       req(di.fields, (c.docs || {})[di.key], di.title, 'docs/' + di.key);
     });
 
-    var s = c.schedule || {}, wk = ctx.worker || {};
+    var s = c.schedule || {}, wk = workers[0] || {};
     var Calc = window.SKS.Calc;
-    if (s.entryDate && wk.birthDate) {
-      var age = Calc.ageAt(wk.birthDate, s.entryDate);
-      if (age !== null && age < 18) issues.push({ level: 'error', area: '外国人', msg: '入国予定日時点で18歳未満です（' + age + '歳）' });
-    }
-    if (s.entryDate && wk.passportExpiry && wk.passportExpiry <= s.entryDate) {
-      issues.push({ level: 'error', area: '外国人', msg: '旅券の有効期限が入国予定日より前です' });
-    }
+    workers.forEach(function (w) {
+      var nm = '外国人（' + (w.name || '氏名未入力') + '）';
+      if (s.entryDate && w.birthDate) {
+        var age = Calc.ageAt(w.birthDate, s.entryDate);
+        if (age !== null && age < 18) issues.push({ level: 'error', area: nm, msg: '入国予定日時点で18歳未満です（' + age + '歳）' });
+      }
+      if (s.entryDate && w.passportExpiry && w.passportExpiry <= s.entryDate) {
+        issues.push({ level: 'error', area: nm, msg: '旅券の有効期限が入国予定日より前です' });
+      }
+    });
     if (s.contractDate && s.employStart && s.contractDate > s.employStart) issues.push({ level: 'warn', area: '日程', msg: '雇用契約締結日が雇用開始日より後になっています', link: 'schedule' });
     if (s.entryDate && s.employStart && s.employStart < s.entryDate) issues.push({ level: 'warn', area: '日程', msg: '雇用開始日が入国予定日より前になっています', link: 'schedule' });
     if (s.applyDate && s.entryDate && s.applyDate > s.entryDate) issues.push({ level: 'warn', area: '日程', msg: '申請日が入国予定日より後になっています', link: 'schedule' });
@@ -51,7 +55,7 @@
     if (s.lang === 'ミャンマー語') {
       var co = ctx.company || {};
       if (isEmpty(co.nameFor) || isEmpty(co.addrFor)) issues.push({ level: 'warn', area: '受入機関', msg: '翻訳文に使う受入機関の外国語表記（名称・住所）が未入力です', link: ctx.company ? '#/company/' + ctx.company.id : 'basic' });
-    } else if (wk.nationality && wk.nationality !== '日本') {
+    } else if (workers.some(function (w) { return w.nationality && w.nationality !== '日本'; })) {
       issues.push({ level: 'warn', area: '翻訳', msg: '翻訳文を付ける言語が「なし」です。雇用条件書・支援計画書などは本人が十分に理解できる言語の翻訳が必要です', link: 'schedule' });
     }
     Calc.compute(c).warnings.forEach(function (m) { issues.push({ level: 'warn', area: '給与・労働条件', msg: m, link: 'salary' }); });

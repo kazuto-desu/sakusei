@@ -126,6 +126,87 @@
   }
   function yen(n) { return (n === null || n === undefined || isNaN(n)) ? '—' : Math.round(n).toLocaleString('ja-JP') + ' 円'; }
 
+
+  // ---------- 日付・時刻の入力（ブラウザ標準の日付欄は使わず、自由な書き方を受け付けて整える） ----------
+  var ERAS = { R: 2018, '令和': 2018, H: 1988, '平成': 1988, S: 1925, '昭和': 1925 };
+  function validYmd(y, m, d) {
+    var dt = new Date(Date.UTC(y, m - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+  }
+  function p2(n) { return (n < 10 ? '0' : '') + n; }
+  // 「2026/12/1」「2026-12-01」「2026年12月1日」「20261201」「R8.12.1」「令和8年12月1日」→ 2026-12-01
+  // month: true のときは年月（2026/12、202612、R8.12）→ 2026-12
+  function parseDate(str, month) {
+    var s = String(str || '').trim().replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+      .replace(/[／．。・\s]/g, '/').replace(/[－ー]/g, '-').replace(/元年/, '1年');
+    if (!s) return '';
+    var y, m, d = 1, mm;
+    var era = /^(R|H|S|令和|平成|昭和)\s*(\d{1,2})[\/.\-年]?(\d{1,2})(?:[\/.\-月](\d{1,2})日?)?月?$/i.exec(s);
+    if (era) {
+      y = ERAS[era[1].length === 1 ? era[1].toUpperCase() : era[1]] + +era[2]; m = +era[3]; d = era[4] ? +era[4] : (month ? 1 : NaN);
+    } else if ((mm = /^(\d{4})(\d{2})(\d{2})?$/.exec(s))) {
+      y = +mm[1]; m = +mm[2]; d = mm[3] ? +mm[3] : (month ? 1 : NaN);
+    } else if ((mm = /^(\d{4})[\/.\-年](\d{1,2})(?:[\/.\-月](\d{1,2})日?)?月?$/.exec(s))) {
+      y = +mm[1]; m = +mm[2]; d = mm[3] ? +mm[3] : (month ? 1 : NaN);
+    } else return null;
+    if (!validYmd(y, m, d) || y < 1900 || y > 2200) return null;
+    return month ? y + '-' + p2(m) : y + '-' + p2(m) + '-' + p2(d);
+  }
+  var WEEK = '日月火水木金土';
+  function wareki(y) {
+    if (y >= 2019) return '令和' + (y - 2018 === 1 ? '元' : y - 2018) + '年';
+    if (y >= 1989) return '平成' + (y - 1988 === 1 ? '元' : y - 1988) + '年';
+    return '昭和' + (y - 1925) + '年';
+  }
+  function showDate(iso) {
+    var m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(iso || '');
+    if (!m) return '';
+    return m[3] ? m[1] + '/' + m[2] + '/' + m[3] : m[1] + '/' + m[2];
+  }
+  function dateHint(iso) {
+    var m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(iso || '');
+    if (!m) return '';
+    var y = +m[1], s = wareki(y) + +m[2] + '月';
+    if (m[3]) s += +m[3] + '日（' + WEEK[new Date(Date.UTC(y, +m[2] - 1, +m[3])).getUTCDay()] + '）';
+    return s;
+  }
+  // 「830」「8:30」「08:30」「8時30分」「17」→ 08:30 / 17:00
+  function parseTime(str) {
+    var s = String(str || '').trim().replace(/[０-９：]/g, function (c) { return c === '：' ? ':' : String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+    if (!s) return '';
+    var m = /^(\d{1,2})(?:[:時.](\d{1,2})分?)?時?$/.exec(s) || /^(\d{1,2})(\d{2})$/.exec(s);
+    if (!m) return null;
+    var h = +m[1], mi = m[2] ? +m[2] : 0;
+    if (h > 29 || mi > 59) return null;
+    return p2(h) + ':' + p2(mi);
+  }
+  /*
+   * 日付（mode: 'date' | 'month'）・時刻（'time'）の入力欄。値は ISO 形式（2026-12-01 / 2026-12 / 08:30）で onChange に渡す
+   */
+  function dateInput(mode, value, onChange, attrs) {
+    var inp = h('input', Object.assign({ type: 'text', inputmode: 'numeric', autocomplete: 'off',
+      placeholder: mode === 'time' ? '例 8:30' : mode === 'month' ? '例 2026/12' : '例 2026/12/1・R8.12.1' }, attrs || {}));
+    var hint = h('span', { class: 'date-hint' });
+    var wrap = h('span', { class: 'date-input' }, inp, hint);
+    function show(v) {
+      inp.value = mode === 'time' ? (v || '') : showDate(v);
+      hint.textContent = mode === 'time' ? '' : dateHint(v);
+    }
+    show(value);
+    function commit() {
+      var v = mode === 'time' ? parseTime(inp.value) : parseDate(inp.value, mode === 'month');
+      inp.classList.toggle('invalid', v === null);
+      if (v === null) { hint.textContent = mode === 'time' ? '時刻の形式が正しくありません' : '日付の形式が正しくありません'; return; }
+      show(v);
+      onChange(v);
+    }
+    inp.addEventListener('change', commit);
+    inp.addEventListener('blur', commit);
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') commit(); });
+    wrap.input = inp;
+    return wrap;
+  }
+
   window.SKS = window.SKS || {};
-  window.SKS.UI = { h: h, clear: clear, toast: toast, modal: modal, confirm: confirmDialog, download: download, saveFile: saveFile, pickFile: pickFile, uid: uid, fmtDate: fmtDate, fmtDateTime: fmtDateTime, yen: yen };
+  window.SKS.UI = { h: h, clear: clear, toast: toast, modal: modal, confirm: confirmDialog, download: download, saveFile: saveFile, pickFile: pickFile, uid: uid, fmtDate: fmtDate, fmtDateTime: fmtDateTime, yen: yen, dateInput: dateInput, parseDate: parseDate, parseTime: parseTime, showDate: showDate };
 })();
