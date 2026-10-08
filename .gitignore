@@ -12,3 +12,7 @@ texts.json
 tests/out/
 node_modules/
 sakusei-app.zip
+tools/__pycache__/
+tools/node_modules
+tools/.template*.xlsx
+tests/node_modules

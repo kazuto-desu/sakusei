@@ -52,10 +52,7 @@
     if (ctx.support && !((ctx.support.feeItems || []).some(function (x) { return !isEmpty(x.name); }))) {
       issues.push({ level: 'warn', area: '登録支援機関', msg: '支援委託費用の内訳が登録されていません（支援委託契約書・説明書の委託料）', link: '#/support/' + ctx.support.id });
     }
-    if (s.lang === 'ミャンマー語') {
-      var co = ctx.company || {};
-      if (isEmpty(co.nameFor) || isEmpty(co.addrFor)) issues.push({ level: 'warn', area: '受入機関', msg: '翻訳文に使う受入機関の外国語表記（名称・住所）が未入力です', link: ctx.company ? '#/company/' + ctx.company.id : 'basic' });
-    } else if (workers.some(function (w) { return w.nationality && w.nationality !== '日本'; })) {
+    if (s.lang !== 'ミャンマー語' && workers.some(function (w) { return w.nationality && w.nationality !== '日本'; })) {
       issues.push({ level: 'warn', area: '翻訳', msg: '翻訳文を付ける言語が「なし」です。雇用条件書・支援計画書などは本人が十分に理解できる言語の翻訳が必要です', link: 'schedule' });
     }
     Calc.compute(c).warnings.forEach(function (m) { issues.push({ level: 'warn', area: '給与・労働条件', msg: m, link: 'salary' }); });

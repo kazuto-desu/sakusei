@@ -1,15 +1,38 @@
 /*
  * ブラウザ操作による結合テスト（すべて架空のダミーデータ）
  *   cd tests && npm install && npm test
- * 入力 → 書類の表示 → PDF 出力までを確認し、外部通信やエラーが発生したら失敗にする。
+ * 入力 → Excel（公式参考様式）の出力までを確認し、外部通信やエラーが発生したら失敗にする。
  */
 const { chromium } = require('playwright');
+const JSZip = require('jszip');
 const path = require('path');
 const fs = require('fs');
 const OUT = path.resolve(__dirname, 'out');
 fs.mkdirSync(OUT, { recursive: true });
 const EXE = process.env.CHROMIUM_PATH || (fs.existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
 const base = 'file://' + path.resolve(__dirname, '../app/index.html');
+
+// xlsx の各シートの文字をまとめて読む（シート名 → 文字列）
+async function readBook(file) {
+  const zip = await JSZip.loadAsync(fs.readFileSync(file));
+  const wb = await zip.file('xl/workbook.xml').async('string');
+  const rels = await zip.file('xl/_rels/workbook.xml.rels').async('string');
+  const sstXml = zip.file('xl/sharedStrings.xml') ? await zip.file('xl/sharedStrings.xml').async('string') : '';
+  const unesc = t => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+  const sst = (sstXml.match(/<si>[\s\S]*?<\/si>/g) || []).map(si => (si.match(/<t[^>]*>[\s\S]*?<\/t>/g) || []).map(t => unesc(t.replace(/<[^>]+>/g, ''))).join(''));
+  const out = {};
+  for (const m of wb.matchAll(/<sheet [^>]*name="([^"]+)"[^>]*r:id="([^"]+)"/g)) {
+    const target = new RegExp('Id="' + m[2] + '"[^>]*Target="([^"]+)"').exec(rels) || new RegExp('Target="([^"]+)"[^>]*Id="' + m[2] + '"').exec(rels);
+    const xml = await zip.file('xl/' + target[1].replace(/^\/?xl\//, '')).async('string');
+    const texts = [];
+    for (const c of xml.matchAll(/<c [^>]*?(?:t="(\w+)")?[^>]*>([\s\S]*?)<\/c>/g)) {
+      if (c[1] === 's') { const v = /<v>(\d+)<\/v>/.exec(c[2]); if (v) texts.push(sst[+v[1]]); }
+      else texts.push(unesc((c[2].match(/<t[^>]*>[\s\S]*?<\/t>/g) || []).map(t => t.replace(/<[^>]+>/g, '')).join('') || (/<v>([^<]*)<\/v>/.exec(c[2]) || [])[1] || ''));
+    }
+    out[unesc(m[1])] = texts.join('\n');
+  }
+  return out;
+}
 
 function assert(cond, msg) { if (!cond) { console.error('NG: ' + msg); process.exitCode = 1; } else console.log('OK: ' + msg); }
 
@@ -68,6 +91,7 @@ function assert(cond, msg) { if (!cond) { console.error('NG: ' + msg); process.e
   await page.waitForSelector('.tabs');
   await page.getByLabel('申請人を追加').selectOption({ label: 'SAMPLE HANAKO' });
   assert((await page.textContent('.combine-box')).includes('同時申請（2名）'), '2人目を追加すると連名の選択肢が表示される');
+  await page.locator('.combine-box input[type=checkbox]').nth(0).check();   // 1-4 も連名にする
   await page.click('text=2. 日程・翻訳');
   await fillAll({ '入国予定日': 'R8.12.1', '雇用契約締結日': '2026/9/1', '雇用開始日（雇用契約の始期）': '20261201', '申請日': '2026年10月10日',
     '書類作成日': '２０２６／１０／１', '支援委託契約の締結日': '2026-09-01', '支援業務を開始する予定日': '2026/12/1' });
@@ -86,36 +110,62 @@ function assert(cond, msg) { if (!cond) { console.error('NG: ' + msg); process.e
   await fillAll({ '②申請人の役職，職務内容，責任の程度': '介護業務全般に従事する。', '比較対象': '比較対象となる日本人労働者がいる',
     '①（最も近い職務を担う）日本人労働者の役職，職務内容，責任の程度': '同じ業務に従事する。', '③報酬 月給（円）': '180000', '⑤日本人と同等以上であると考える理由': '同じ職務内容のため。' });
   await page.click('.side-nav >> text=雇用契約書・雇用条件書（1-5・1-6）');
-  await fillAll({ '賃金締切日（毎月〇日）': '末', '賃金支払日（毎月〇日）': '25', '定例日': '土曜日・日曜日', '定例日（ミャンマー語）': 'စနေ၊ တနင်္ဂနွေ' });
+  await fillAll({ '賃金締切日（毎月〇日）': '末', '賃金支払日（毎月〇日）': '25', '定例日 毎週〇曜日': '土・日', '３．更新上限の有無': '有',
+    '更新上限（更新〇回まで）': '4', '更新上限（通算契約期間〇年まで）': '5', '５．雇用管理の改善等の相談窓口 部署名': '総務部' });
   await page.click('.side-nav >> text=支援計画書（1-17）');
   await fillAll({ '出迎え空港等': '成田', '送迎方法（入国時）': '社用車', '居室の広さ（㎡）': '18', '同居人数計（人）': '1', '寝室の広さ（㎡）': '12' });
-  await page.getByLabel('1a 時期').fill('2026年10月5日');
+  await page.getByLabel('1 時期', { exact: true }).fill('2026年10月5日');
   await page.screenshot({ path: OUT + '/01-plan-input.png', fullPage: false });
 
-  // 書類の作成
-  await page.click('text=5. 書類の作成・印刷');
-  await page.screenshot({ path: OUT + '/02-print-select.png', fullPage: true });
-  await page.click('text=選択した書類を表示して印刷・PDF保存');
-  await page.waitForSelector('.docs .doc');
-  const docCount = await page.locator('.docs .doc').count();
-  assert(docCount >= 9, '書類が表示される（' + docCount + ' ページ区切り）');
-  const text = await page.textContent('.docs');
-  assert(text.includes('特定技能雇用契約書') && text.includes('雇用条件書') && text.includes('支援計画書') && text.includes('支援委託契約書'), '8種類の書類の見出しがある');
-  assert(text.includes('TEST TARO') && text.includes('テスト株式会社') && text.includes('テスト支援協同組合'), 'マスタの情報が反映される');
-  assert(text.includes('SAMPLE HANAKO'), '2人目の個人ごとの書類が作成される');
-  assert((text.match(/特定技能雇用契約書/g) || []).length >= 2, '雇用契約書は1人1部作成される');
-  assert(text.includes('別紙の名簿のとおり') && text.includes('支援対象者（名簿）'), '支援計画書は連名（別紙の名簿のとおり＋名簿）になる');
-  assert(text.includes('甲が雇用する１号特定技能外国人　別紙のとおり'), '支援委託契約書の丙が「別紙のとおり」になる');
-  assert(text.includes('2026年12月1日　～　2027年11月30日'), '雇用契約期間が1年間で自動計算される');
-  assert(text.includes('185,000'), '月給（固定支給込み）185,000円が報酬説明書に入る');
-  assert(text.includes('月額　20,000円（税別）'), '支援委託料（定期分）が委託契約書に入る');
-  assert(text.includes('テスト地方裁判所を第一審'), '合意管轄裁判所が入る（「地方裁判所」が重複しない）');
-  assert(/[က-႟]/.test(text), 'ミャンマー語訳が併記される');
-  assert(!/[ၠ-႗]/.test(text), 'Zawgyi の文字が残っていない');
-  assert(text.includes('စနေ၊ တနင်္ဂနွေ'), '入力したミャンマー語が書類に入る');
-  await page.screenshot({ path: OUT + '/03-docs.png', fullPage: false });
-  await page.pdf({ path: OUT + '/docs.pdf', format: 'A4', printBackground: true });
-  assert(fs.statSync(OUT + '/docs.pdf').size > 50000, 'PDF が作成される');
+  // 書類の作成（Excel）
+  await page.click('text=5. 書類の作成（Excel）');
+  await page.screenshot({ path: OUT + '/02-export-select.png', fullPage: true });
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('text=選択した書類をExcelファイルで保存')]);
+  const file = OUT + '/output.xlsx';
+  await dl.saveAs(file);
+  // ファイル名は保存ダイアログ（showSaveFilePicker）で付く。file:// のダウンロードでは Chromium が名前を無視するため確認しない
+  const book = await readBook(file);
+  const names = Object.keys(book);
+  console.log('   シート: ' + names.join(', '));
+  const all = names.map(n => book[n]).join('\n');
+  assert(names.includes('1-5(MY)_TEST') && names.includes('1-5(MY)_SAMPLE'), '雇用契約書はミャンマー語併記版で1人1シート');
+  assert(names.includes('1-6(MY)_TEST') && names.includes('1-6別紙1(MY)_TEST') && !names.some(n => /別紙2/.test(n)), '雇用条件書＋別紙１（別紙２は無期転換の変更がないので作らない）');
+  assert(names.includes('1-17') && names.includes('1-17別紙（名簿）') && names.includes('1-17(MY)'), '支援計画書は連名1シート＋名簿＋翻訳様式');
+  assert(names.includes('5-10') && names.includes('5-10別紙（名簿）') && names.includes('1-25'), '支援委託契約書・説明書は連名');
+  assert(!names.includes('別紙名簿') && !names.includes('1-6'), 'ひな形の元シートは残らない');
+  assert(book['1-17'].includes('別紙の名簿のとおり'), '支援計画書の氏名欄が「別紙の名簿のとおり」');
+  assert(book['1-17別紙（名簿）'].includes('TEST TARO') && book['1-17別紙（名簿）'].includes('SAMPLE HANAKO'), '名簿に2名が載る');
+  assert(book['1-25'].includes('別紙のとおり') && book['5-10'].includes('別紙のとおり'), '1-25・5-10 の申請人欄が「別紙のとおり」');
+  assert(book['1-5(MY)_TEST'].includes('テスト株式会社') && book['1-5(MY)_TEST'].includes('TEST TARO'), '雇用契約書に甲乙の名称が入る');
+  const c6 = book['1-6(MY)_TEST'];
+  assert(c6.includes('2026年12月1日') && c6.includes('2027年11月30日'), '雇用契約期間が1年間で自動計算される');
+  assert(c6.includes('■　自動的に更新する') || c6.includes('■ 自動的に更新する'), '契約更新の□が■になる');
+  assert(c6.includes('更新　4回まで') && c6.includes('総務部'), '更新上限・相談窓口が入る');
+  assert(c6.includes('180,000円'), '基本賃金が入る');
+  assert(/[က-႟]/.test(c6) && !/[ၠ-႗]/.test(all) && !/္($|[^က-အ])/m.test(all), 'ミャンマー語（Unicode）の文言が残り、Zawgyi の文字はない');
+  assert(book['1-6別紙1(MY)_TEST'].includes('住宅手当　10,000円') && book['1-6別紙1(MY)_TEST'].includes('（約　20,000円）'), 'ミャンマー語版の別紙１にも手当・控除が入る');
+  assert(book['1-4'].includes('185,000') && book['1-4'].includes('別紙のとおり') && names.includes('1-4別紙（名簿）'), '報酬説明書を連名にでき、月給（固定支給込み）185,000円が入る');
+  assert(book['1-17別紙（名簿）'].includes('署名日') && book['1-25別紙（名簿）'].includes('登録支援機関との支援委託契約に関する説明書（参考様式第１－２５号）'), '名簿は補助用紙の形式（立証資料の名称・1-17は署名日欄）');
+  assert(book['1-17'].includes('別紙のとおり'), '支援計画書の外国人の署名欄が「別紙のとおり」');
+  assert(book['5-10'].includes('月額　20,000円'), '支援委託料（定期分）が委託契約書に入る');
+  assert(book['5-10'].includes('テスト地方裁判所'), '合意管轄裁判所が入る');
+  assert(book['1-17'].includes('テスト支援協同組合') && book['1-17'].includes('2026年10月5日'), '支援計画書に登録支援機関・実施時期が入る');
+  assert(book['1-16(MY)_SAMPLE'].includes('SAMPLE HANAKO'), '雇用の経緯説明書は1人1シート');
+
+  // 1人だけ・連名なし・日本語のみ
+  await page.click('text=2. 日程・翻訳');
+  await fill('翻訳文を付ける言語', 'なし（日本語のみ）');
+  await page.click('text=1. 紐付け');
+  await page.locator('.combine-box input[type=checkbox]').nth(3).uncheck();   // 1-25 を個別に
+  await page.click('text=5. 書類の作成（Excel）');
+  const [dl2] = await Promise.all([page.waitForEvent('download'), page.click('text=選択した書類をExcelファイルで保存')]);
+  await dl2.saveAs(OUT + '/output2.xlsx');
+  const book2 = await readBook(OUT + '/output2.xlsx');
+  const n2 = Object.keys(book2);
+  console.log('   シート: ' + n2.join(', '));
+  assert(n2.includes('1-5_TEST') && !n2.some(n => /MY/.test(n)), '日本語のみのときは日本語版のシート');
+  assert(n2.includes('1-25_TEST') && n2.includes('1-25_SAMPLE') && !n2.includes('1-25別紙（名簿）'), '連名にしない書類は1人1シート');
+  assert(book2['1-25_SAMPLE'].includes('SAMPLE HANAKO'), '個別の説明書に本人の氏名が入る');
 
   // ロック → 再表示でデータが残っている
   await page.goto(base + '#/cases');

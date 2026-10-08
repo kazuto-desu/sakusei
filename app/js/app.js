@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   var SKS = window.SKS;
-  var UI = SKS.UI, h = UI.h, F = SKS.FIELDS, Vault = SKS.Vault, Calc = SKS.Calc, Builder = SKS.Builder, D = SKS.Doc;
+  var UI = SKS.UI, h = UI.h, F = SKS.FIELDS, Vault = SKS.Vault, Calc = SKS.Calc, Builder = SKS.Builder;
 
   var S = { state: null, saveTimer: null, idleTimer: null };
   var app = document.getElementById('app');
@@ -69,7 +69,6 @@
     var p = S.state ? Vault.saveJson('state', S.state) : Promise.resolve();
     p.then(function () {
       Vault.lock(); S.state = null;
-      document.body.classList.remove('printing');
       location.hash = '';
       renderLock();
     });
@@ -413,7 +412,7 @@
   }
 
   // ======================= 案件編集 =======================
-  var CASE_TABS = [['basic', '1. 紐付け'], ['schedule', '2. 日程・翻訳'], ['salary', '3. 給与・労働条件'], ['docs', '4. 書類ごとの入力'], ['print', '5. 書類の作成・印刷']];
+  var CASE_TABS = [['basic', '1. 紐付け'], ['schedule', '2. 日程・翻訳'], ['salary', '3. 給与・労働条件'], ['docs', '4. 書類ごとの入力'], ['print', '5. 書類の作成（Excel）']];
 
   function caseView(id, tab, sub) {
     var c = byId(S.state.cases, id);
@@ -432,7 +431,7 @@
     else if (tab === 'schedule') body.appendChild(h('div', { class: 'card' }, fieldGrid(F.schedule, c.schedule, touch)));
     else if (tab === 'salary') body.appendChild(caseSalary(c, touch));
     else if (tab === 'docs') body.appendChild(caseDocs(c, touch, sub));
-    else if (tab === 'print') body.appendChild(casePrint(c));
+    else if (tab === 'print') body.appendChild(caseExport(c));
     return h('section', {}, head, tabs, body);
   }
 
@@ -479,11 +478,13 @@
   }
 
   // 申請人（複数人の同時申請に対応）
-  var COMBINABLE = [
-    ['1-17', '1-17 支援計画書', 'Ⅰ欄の氏名を「別紙の名簿のとおり」とし、名簿を添付（支援内容が同一の場合）'],
-    ['1-25', '1-25 支援委託契約に関する説明書', '申請人欄を「別紙のとおり」とし、別紙を添付（全項目が同一の場合）'],
-    ['5-10', '5-10 支援委託契約書', '丙（外国人）を「別紙のとおり」とし、別紙を添付']
-  ];
+  var COMBINE_NOTE = {
+    '1-4': '申請人の氏名を「別紙のとおり」とし、名簿を添付（氏名以外の記載内容が同一の場合）',
+    '1-16': '特定技能外国人・申請人の署名を「別紙のとおり」とし、名簿を添付（記載内容が同一の場合）',
+    '1-17': 'Ⅰ欄の氏名を「別紙の名簿のとおり」とし、署名日・署名欄付きの名簿を添付（支援内容が同一の場合）',
+    '1-25': '申請人欄を「別紙のとおり」とし、名簿を添付（全項目の内容が同一の場合）',
+    '5-10': '丙（外国人）を「別紙のとおり」とし、名簿を添付'
+  };
   function workersRow(c, touch) {
     c.workerIds = c.workerIds || [];
     c.combine = c.combine || {};
@@ -522,10 +523,10 @@
         body.appendChild(h('div', { class: 'combine-box' },
           h('div', { class: 'strong', text: '同時申請（' + c.workerIds.length + '名）：連名にする書類' }),
           h('p', { class: 'muted small', text: 'チェックした書類は1部にまとめ、氏名欄を「別紙のとおり」として申請人の名簿（別紙）を付けます。チェックしない書類と、雇用契約書・雇用条件書など個人ごとの書類は、1人ずつ作成します。' }),
-          COMBINABLE.map(function (x) {
-            var cb = h('input', { type: 'checkbox', checked: c.combine[x[0]] !== false });
-            cb.addEventListener('change', function () { c.combine[x[0]] = cb.checked; touch(); });
-            return h('label', { class: 'check-row' }, cb, ' ' + x[1], h('span', { class: 'muted small', text: '　' + x[2] }));
+          SKS.DOCS.filter(function (d) { return d.combinable; }).map(function (d) {
+            var cb = h('input', { type: 'checkbox', checked: SKS.Inputs.isCombined(c, d) });
+            cb.addEventListener('change', function () { c.combine[d.id] = cb.checked; touch(); });
+            return h('label', { class: 'check-row' }, cb, ' ' + d.id + ' ' + d.title.replace(/（.*）$/, ''), h('span', { class: 'muted small', text: '　' + (COMBINE_NOTE[d.id] || '') }));
           })));
       }
     }
@@ -570,7 +571,6 @@
 
     left.appendChild(h('h3', { class: 'group', text: '手当（最大5件）' }));
     var cols = [['name', '手当の内容', 'text'], ['amount', '月額（円）', 'num'], ['kind', '区分', 'kind'], ['method', '計算方法', 'text']];
-    if (my) cols.push(['name_my', '手当名（ミャンマー語）', 'text'], ['method_my', '計算方法（ミャンマー語）', 'text']);
     left.appendChild(h('div', { class: 'table-scroll' }, h('table', { class: 'table compact' },
       h('thead', {}, h('tr', {}, h('th', { text: '#' }), cols.map(function (x) { return h('th', { text: x[1] }); }))),
       h('tbody', {}, [0, 1, 2, 3, 4].map(function (i) {
@@ -638,87 +638,114 @@
     return h('div', { class: 'docs-layout' }, nav, card);
   }
 
-  // 支援計画書 Ⅳ 支援内容の項目ごとの入力
+  // 支援計画書 Ⅳ 支援内容の項目ごとの入力（公式様式の欄の並び）
   function planEditor(c, touch) {
-    var P = SKS.PLAN, T = SKS.TEXTS;
+    var P = SKS.PLAN117;
     var p = c.docs.plan;
     p.items = p.items || {};
     p.free = p.free || {};
-    var ctx = D.context(c, S.state, (c.workerIds || [])[0]);
+    var ctx = SKS.Inputs.context(c, S.state, (c.workerIds || [])[0]);
     var wrap = h('div', { class: 'plan-editor' }, h('h3', { class: 'group', text: 'Ⅳ 支援内容（項目ごと）' }),
-      h('p', { class: 'muted small', text: '担当者・住所は、空欄のとき登録支援機関（自社支援の場合は受入機関の支援担当者）の情報を使います。' }));
-    function editorRow(sec, key, isFree) {
-      var it = p.items[key] = p.items[key] || {};
-      var st = P.itemState(ctx, key);
-      var label = isFree ? '（自由記入）' : T['p117.i' + key];
-      var planSel = h('select', { 'aria-label': key + ' 実施予定' }, h('option', { value: '有', text: '有' }), h('option', { value: '無', text: '無' }));
-      planSel.value = it.plan || st.plan;
-      var when = h('input', { type: 'text', placeholder: '時期（例：入国日）', 'aria-label': key + ' 時期', value: it.when || '' });
-      var ent = h('select', { 'aria-label': key + ' 委託' }, h('option', { value: '有', text: '委託有' }), h('option', { value: '無', text: '委託無' }));
-      ent.value = it.entrust || st.entrust;
-      var person = h('input', { type: 'text', placeholder: st.person || '担当者 氏名（役職）', 'aria-label': key + ' 担当者', value: it.person || '' });
-      var free = isFree ? h('input', { type: 'text', placeholder: '自由記入の内容', 'aria-label': key + ' 内容', value: p.free[key] || '' }) : null;
+      h('p', { class: 'muted small', text: '担当者は、空欄のとき登録支援機関（自社支援の場合は受入機関の支援担当者）の情報を使います。「委託」は、支援の一部を登録支援機関以外の第三者に委託する場合だけ「委託有」にします（登録支援機関に全部を委託する場合は「委託無」。様式の注意５）。' }));
+    function editorRow(b) {
+      var it = p.items[b.key] = p.items[b.key] || {};
+      var st = P.blockState(ctx, b);
+      var planSel = h('select', { 'aria-label': b.key + ' 実施予定' }, h('option', { value: '有', text: '有' }), h('option', { value: '無', text: '無' }));
+      planSel.value = st.plan;
       planSel.addEventListener('change', function () { it.plan = planSel.value; touch(); });
+      if (b.free) {
+        var free = h('input', { type: 'text', placeholder: '自由記入の内容', 'aria-label': b.key + ' 内容', value: p.free[b.key] || '' });
+        free.addEventListener('input', function () { p.free[b.key] = free.value; touch(); });
+        return h('tr', {}, h('td', { class: 'small' }, b.label), h('td', {}, planSel), h('td', { colspan: 3 }, free));
+      }
+      var when = h('input', { type: 'text', placeholder: b.presetWhen || '時期（例：入国日）', 'aria-label': b.key + ' 時期', value: it.when || '' });
       when.addEventListener('input', function () { it.when = when.value; touch(); });
-      ent.addEventListener('change', function () { it.entrust = ent.value; touch(); });
+      var ent = null;
+      if (!b.noEntrust) {
+        ent = h('select', { 'aria-label': b.key + ' 委託' }, h('option', { value: '有', text: '委託有' }), h('option', { value: '無', text: '委託無' }));
+        ent.value = st.entrust;
+        ent.addEventListener('change', function () { it.entrust = ent.value; touch(); });
+      }
+      var person = h('input', { type: 'text', placeholder: st.person || '担当者 氏名（役職）', 'aria-label': b.key + ' 担当者', value: it.person || '' });
       person.addEventListener('input', function () { it.person = person.value; touch(); });
-      if (free) free.addEventListener('input', function () { p.free[key] = free.value; touch(); });
+      var addr = h('input', { type: 'text', placeholder: '委託先の住所（〒000-0000 …）', 'aria-label': b.key + ' 委託先の住所', value: it.addr || '' });
+      addr.addEventListener('input', function () { it.addr = addr.value; touch(); });
+      addr.hidden = st.entrust !== '有';
+      if (ent) ent.addEventListener('change', function () { addr.hidden = ent.value !== '有'; });
       var methods = null;
-      if (sec.methods) {
-        var m = it.m || P.defaultMethods(sec);
-        methods = h('div', { class: 'checks' }, sec.methods.map(function (mk) {
+      if (b.methods) {
+        var m = st.m;
+        methods = h('div', { class: 'checks' }, b.methods.map(function (mk) {
           var cb = h('input', { type: 'checkbox', checked: !!m[mk] });
           cb.addEventListener('change', function () { it.m = it.m || clone(m); it.m[mk] = cb.checked; touch(); });
-          return h('label', { class: 'check-row' }, cb, ' ' + P.METHODS[mk][0]);
-        }), sec.methods.indexOf('other') >= 0 ? (function () {
-          var o = h('input', { type: 'text', placeholder: 'その他の内容', 'aria-label': key + ' その他', value: it.mOther || '' });
+          return h('label', { class: 'check-row' }, cb, ' ' + mk);
+        }), b.methods.indexOf('その他') >= 0 ? (function () {
+          var o = h('input', { type: 'text', placeholder: 'その他の内容', 'aria-label': b.key + ' その他', value: it.mOther || '' });
           o.addEventListener('input', function () { it.mOther = o.value; touch(); });
           return o;
         })() : null);
       }
-      return h('tr', {}, h('td', { class: 'small' }, label, free), h('td', {}, planSel, when), h('td', {}, ent), h('td', {}, person), h('td', {}, methods));
+      return h('tr', {}, h('td', { class: 'small' }, b.label), h('td', {}, planSel, when), h('td', {}, ent), h('td', {}, person, addr), h('td', {}, methods));
     }
-    P.SECTIONS.forEach(function (sec) {
-      var groups = sec.groups ? sec.groups.map(function (g, gi) { return { items: g.items, methods: g.methods, free: sec.n + (gi ? 'B' : 'A') + 'free', head: T[g.head] }; })
-        : [{ items: sec.items, methods: sec.methods, free: sec.n + 'free' }];
-      wrap.appendChild(h('h4', { class: 'list-title', text: T['p117.i' + sec.n] }));
-      groups.forEach(function (g) {
-        var s2 = Object.assign({}, sec, { methods: g.methods });
-        if (g.head) wrap.appendChild(h('div', { class: 'muted small', text: g.head }));
-        wrap.appendChild(h('div', { class: 'table-scroll' }, h('table', { class: 'table compact plan-edit' },
-          h('thead', {}, h('tr', {}, ['支援内容', '実施予定・時期', '委託', '担当者', '実施方法'].map(function (t) { return h('th', { text: t }); }))),
-          h('tbody', {}, g.items.map(function (k) { return editorRow(s2, k, false); }).concat([editorRow(s2, g.free, true)])))));
-      });
+    var secs = [];
+    P.BLOCKS.forEach(function (b) { if (secs.indexOf(b.sec) < 0) secs.push(b.sec); });
+    secs.forEach(function (sec) {
+      wrap.appendChild(h('h4', { class: 'list-title', text: sec }));
+      wrap.appendChild(h('div', { class: 'table-scroll' }, h('table', { class: 'table compact plan-edit' },
+        h('thead', {}, h('tr', {}, ['支援内容', '実施予定・時期', '委託', '担当者', '実施方法'].map(function (t) { return h('th', { text: t }); }))),
+        h('tbody', {}, P.BLOCKS.filter(function (b) { return b.sec === sec; }).map(editorRow)))));
     });
     return wrap;
   }
 
-  // ---------- 書類の作成・印刷 ----------
+  // ---------- 書類の作成（Excel） ----------
   function applicableDocs(c) {
     return SKS.DOCS.filter(function (d) { return !d.needsSupport || c.supportId; });
   }
-  function casePrint(c) {
+  function fileStamp() {
+    var d = new Date();
+    return d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2);
+  }
+  function caseExport(c) {
     var ctx = caseCtx(c);
     var issues = Builder.validate(ctx);
     var errors = issues.filter(function (i) { return i.level === 'error'; });
     c.printSel = c.printSel || {};
     var docs = applicableDocs(c);
     var checks = {};
+    var preview = h('div', { class: 'muted small' });
+    function selected() { return docs.filter(function (d) { return checks[d.id].checked; }).map(function (d) { return d.id; }); }
+    function renderPreview() {
+      var names = SKS.Export.plan(c, S.state, selected()).map(function (j) { return j.name; });
+      UI.clear(preview).appendChild(h('div', {}, h('span', { text: '作成するシート（' + names.length + '）：' }), names.join('、') || '（なし）'));
+    }
     var list = h('div', { class: 'doc-list' }, ['雇用', '支援'].map(function (g) {
       return h('div', { class: 'doc-group' }, h('h3', { text: g === '雇用' ? '雇用関係' : '支援関係' }),
         docs.filter(function (d) { return d.group === g; }).map(function (d) {
           var cb = h('input', { type: 'checkbox', checked: c.printSel[d.id] !== false });
           checks[d.id] = cb;
-          cb.addEventListener('change', function () { c.printSel[d.id] = cb.checked; save(); });
+          cb.addEventListener('change', function () { c.printSel[d.id] = cb.checked; save(); renderPreview(); });
+          var combined = SKS.Inputs.isCombined(c, d);
           return h('label', { class: 'doc-item' }, cb, h('span', { class: 'doc-no', text: d.no }), h('span', { text: d.title }),
-            d.bilingual ? h('span', { class: 'pill', text: '翻訳併記可' }) : null);
+            d.my ? h('span', { class: 'pill', text: 'ミャンマー語版あり' }) : null,
+            combined ? h('span', { class: 'pill', text: '連名＋名簿' }) : null);
         }));
     }));
+    renderPreview();
     var lang = (c.schedule || {}).lang || 'なし（日本語のみ）';
-    var openBtn = h('button', { class: 'btn primary big', type: 'button', text: '選択した書類を表示して印刷・PDF保存', on: { click: function () {
-      var ids = docs.filter(function (d) { return checks[d.id].checked; }).map(function (d) { return d.id; });
+    var btn = h('button', { class: 'btn primary big', type: 'button', text: '選択した書類をExcelファイルで保存', on: { click: function () {
+      var ids = selected();
       if (!ids.length) { UI.toast('書類を選択してください', 'error'); return; }
-      location.hash = '#/doc/' + c.id + '/' + ids.join(',');
+      var ws = workersOf(c);
+      var name = '申請書類_' + (ws[0] && ws[0].name ? ws[0].name.split(/\s+/)[0] + (ws.length > 1 ? 'ほか' + (ws.length - 1) + '名' : '') : '案件') + '_' + fileStamp() + '.xlsx';
+      var result = null;
+      UI.saveFile(name, 'Excel ブック', { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }, function () {
+        return SKS.Export.build(c, S.state, ids).then(function (r) { result = r; return r.blob; });
+      }).then(function (saved) {
+        if (!saved) return;
+        UI.toast('Excelファイルを保存しました（' + result.sheets.length + 'シート）');
+        if (result.errors.length) UI.modal('一部の欄を確認してください', h('ul', {}, result.errors.map(function (e) { return h('li', { text: e }); })), [{ label: 'OK', primary: true }]);
+      }, function (e) { console.error(e); UI.toast('Excelファイルを作成できませんでした: ' + e.message, 'error'); });
     } } });
     return h('div', {},
       h('div', { class: 'card' },
@@ -728,32 +755,14 @@
           return h('li', { class: i.level }, h('span', { class: 'pill ' + (i.level === 'error' ? 'err' : 'warn'), text: i.level === 'error' ? '必須' : '確認' }), ' [' + i.area + '] ' + i.msg, href ? [' ', h('a', { href: href, text: '入力する' })] : null);
         })) : h('p', { class: 'ok-text', text: '必須項目はすべて入力されています。' })),
       h('div', { class: 'card' },
-        h('h3', { text: '作成する書類' }),
+        h('h3', { text: '作成する書類（出入国在留管理庁の参考様式）' }),
         h('p', { class: 'muted', text: '翻訳：' + lang + '（「2. 日程・翻訳」で変更できます）' }),
-        list, openBtn,
-        h('p', { class: 'muted small', text: '印刷画面で送信先に「PDFに保存」を選ぶとPDFファイルになります。未入力の欄は空欄のまま印刷されます。' })));
-  }
-
-  // 書類の表示（印刷用）
-  function docView(caseId, idsText) {
-    var c = byId(S.state.cases, caseId);
-    if (!c) return h('section', {}, h('p', { text: '案件が見つかりません。' }));
-    ensureDocs(c);
-    var ids = (idsText || '').split(',');
-    var pages = h('div', { class: 'docs' });
-    D.plan(c, S.state, ids).forEach(function (job) {
-      try {
-        [].concat(job.doc.render(job.ctx)).forEach(function (el) { if (el) pages.appendChild(el); });
-      } catch (e) {
-        console.error(e);
-        pages.appendChild(h('section', { class: 'doc' }, h('p', { class: 'error-text', text: job.doc.title + ' を作成できませんでした: ' + e.message })));
-      }
-    });
-    var bar = h('div', { class: 'print-bar' },
-      h('a', { class: 'btn', href: '#/case/' + c.id + '/print', text: '← 戻る' }),
-      h('span', { class: 'muted', text: caseTitle(c) }),
-      h('button', { class: 'btn primary', type: 'button', text: '印刷・PDF保存', on: { click: function () { window.print(); } } }));
-    return h('div', { class: 'print-view' }, bar, pages);
+        list, preview, btn,
+        h('ul', { class: 'muted small' },
+          h('li', { text: '選んだ書類を1つのExcelファイルにまとめて保存します（1書類＝1シート。個人ごとの書類は1人1シート）。' }),
+          h('li', { text: '保存したファイルはExcelでそのまま編集・印刷できます。未入力の欄は空欄のままです。' }),
+          h('li', { text: '雇用条件書の別紙２（無期転換後の雇用条件）は、無期転換後の労働条件の変更が「有」のときだけ作成します。' }),
+          h('li', { text: '徴収費用の説明書（旧1-9）は、現行の支援計画書（1-17）の「3-ア-ｄ 住居の概要・居住費」に統合されています。' }))));
   }
 
   // ======================= マスタ =======================
@@ -896,12 +905,6 @@
   function route() {
     if (!S.state) { renderLock(); return; }
     var parts = (location.hash || '#/cases').replace(/^#\/?/, '').split('/');
-    document.body.classList.toggle('printing', parts[0] === 'doc');
-    if (parts[0] === 'doc') {
-      UI.clear(app).appendChild(docView(parts[1], parts[2]));
-      window.scrollTo(0, 0);
-      return;
-    }
     var view, active = parts[0];
     switch (parts[0]) {
       case 'case': view = caseView(parts[1], parts[2], parts[3]); active = 'cases'; break;
