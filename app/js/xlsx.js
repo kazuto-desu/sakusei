@@ -470,6 +470,28 @@
         self.zip.file(s.path, xmlString(sh.doc));
       }
     });
+    // 残したシートから参照されていない図形（使わない様式のもの）を削除
+    var relJobs = keep.map(function (s) {
+      var rp = s.path.replace('worksheets/', 'worksheets/_rels/') + '.rels';
+      return self.zip.file(rp) ? self.zip.file(rp).async('string').then(function (x) {
+        return kids(parseXml(x).documentElement, 'Relationship').filter(function (r) { return /\/drawing$/.test(r.getAttribute('Type')); })
+          .map(function (r) { return resolve(s.path, r.getAttribute('Target')); });
+      }) : Promise.resolve([]);
+    });
+    return Promise.all(relJobs).then(function (lists) {
+      var used = {};
+      lists.forEach(function (l) { l.forEach(function (p) { used[p] = true; }); });
+      Object.keys(self.zip.files).forEach(function (p) {
+        if (!/^xl\/drawings\/drawing\d+\.xml$/.test(p) || used[p]) return;
+        self.zip.remove(p);
+        self.zip.remove(p.replace('drawings/', 'drawings/_rels/') + '.rels');
+        kids(self.ct.documentElement, 'Override').forEach(function (o) { if (o.getAttribute('PartName') === '/' + p) self.ct.documentElement.removeChild(o); });
+      });
+      return self._finish();
+    });
+  };
+  Book.prototype._finish = function () {
+    var self = this;
     this.zip.remove('xl/calcChain.xml');
     kids(this.ct.documentElement, 'Override').forEach(function (o) { if (o.getAttribute('PartName') === '/xl/calcChain.xml') self.ct.documentElement.removeChild(o); });
     this.zip.file('xl/workbook.xml', xmlString(this.wb));
