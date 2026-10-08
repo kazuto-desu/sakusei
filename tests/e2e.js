@@ -125,6 +125,14 @@ function assert(cond, msg) { if (!cond) { console.error('NG: ' + msg); process.e
   await dl.saveAs(file);
   // ファイル名は保存ダイアログ（showSaveFilePicker）で付く。file:// のダウンロードでは Chromium が名前を無視するため確認しない
   const book = await readBook(file);
+  {
+    // Excel は styles.xml の要素順が仕様と違うと「修復」になる
+    const st = await (await JSZip.loadAsync(fs.readFileSync(file))).file('xl/styles.xml').async('string');
+    const ORDER = ['numFmts', 'fonts', 'fills', 'borders', 'cellStyleXfs', 'cellXfs', 'cellStyles', 'dxfs', 'tableStyles', 'colors', 'extLst'];
+    const seq = [...st.matchAll(/<(\w+)[ >\/]/g)].map(m => m[1]).filter(n => ORDER.includes(n));
+    const top = seq.filter((n, i) => seq.indexOf(n) === i);
+    assert(top.every((n, i) => i === 0 || ORDER.indexOf(top[i - 1]) < ORDER.indexOf(n)) && !/<numFmts count="0"\/>/.test(st), 'styles.xml の要素順が Excel の仕様どおり（' + top.join(',') + '）');
+  }
   const names = Object.keys(book);
   console.log('   シート: ' + names.join(', '));
   const all = names.map(n => book[n]).join('\n');

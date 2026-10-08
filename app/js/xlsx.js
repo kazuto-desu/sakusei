@@ -445,6 +445,9 @@
       });
     });
     if (dn && !kids(dn).length) dn.parentNode.removeChild(dn);
+    // 空のブック保護（ひな形作成時の名残り）は不要なので外す
+    var prot = kid(wbRoot, 'workbookProtection');
+    if (prot && !prot.attributes.length) wbRoot.removeChild(prot);
     var bv = kid(wbRoot, 'bookViews');
     if (bv) kids(bv, 'workbookView').forEach(function (v) { v.setAttribute('activeTab', '0'); v.setAttribute('firstSheet', '0'); });
     // 使わないシートのファイルと関係を削除

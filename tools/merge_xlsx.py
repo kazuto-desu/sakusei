@@ -103,6 +103,16 @@ def merge(a_path, b_path, out_path, title, insert_at=None):
         y.set('xfId', '0')
         xfs_a.append(y)
     xfs_a.set('count', str(len(xfs_a)))
+    # Excel は styles.xml の要素の順番が仕様どおりでないと「修復」になるため並べ直す（空の numFmts は削除）
+    ORDER = ['numFmts', 'fonts', 'fills', 'borders', 'cellStyleXfs', 'cellXfs', 'cellStyles', 'dxfs', 'tableStyles', 'colors', 'extLst']
+    kids = list(st_a)
+    for k in kids:
+        st_a.remove(k)
+    kids.sort(key=lambda k: ORDER.index(etree.QName(k).localname) if etree.QName(k).localname in ORDER else len(ORDER))
+    for k in kids:
+        if etree.QName(k).localname == 'numFmts' and len(k) == 0:
+            continue
+        st_a.append(k)
     files['xl/styles.xml'] = tostring(st_a)
 
     # ---- シートの書き換え ----
